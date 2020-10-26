@@ -1,15 +1,13 @@
-import { MyContext } from './../tytes';
-import { Arg, Ctx, Field, InputType, Mutation, ObjectType, Resolver } from "type-graphql";
+import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from './../constants';
+import { MyContext } from '../types';
+import { Arg, Ctx, Field, Mutation, ObjectType, Query, Resolver } from "type-graphql";
 import argon2 from 'argon2'
 import { User } from '../entities/User';
-
-@InputType()
-class UsernamePasswordInput{
-  @Field()
-  username: string
-  @Field()
-  password: string
-}
+import { EntityManager } from '@mikro-orm/postgresql'
+import { UsernamePasswordInput } from './UsernamePasswordInput';
+import { validateRegister } from '../utils/validateRegister';
+import { sendEmail } from '../utils/sendEmail';
+import { v4 } from 'uuid'
 
 @ObjectType()
 class FieldError {
@@ -18,98 +16,175 @@ class FieldError {
   @Field()
   message: string
 }
- 
+
+
+
 @ObjectType()
-class UserResponse{
-  @Field(()=> [FieldError], {nullable: true})
+class UserResponse {
+  @Field(() => [FieldError], { nullable: true })
   errors?: FieldError[]
 
-  @Field(()=> User, {nullable: true})
-  user?:User
+  @Field(() => User, { nullable: true })
+  user?: User
 }
 
 @Resolver()
 export class UserResolver {
   @Mutation(() => UserResponse)
+  async changePassword(
+    @Arg('token') token: string,
+    @Arg('newPassword') newPassword: string,
+    @Ctx() { em, redis, req }: MyContext
+  ): Promise<UserResponse> {
+    if (newPassword.length <= 3) {
+      return {
+        errors: [{
+          field: 'newPassword',
+          message: 'Password must be greater that 3'
+        }]
+      }
+    }
+    const key = FORGET_PASSWORD_PREFIX + token
+    const userId = await redis.get(key)
+    if (!userId) {
+      return {
+        errors: [{
+          field: 'token',
+          message: 'Token expired'
+        }]
+      }
+    }
+
+    const user = await em.findOne(User, {id: parseInt(userId)})
+    if (!user) {
+      return {
+        errors: [{
+          field: 'token',
+          message: 'User longer exist'
+        }]
+      }
+    }
+
+    user.password = await argon2.hash(newPassword)
+    await em.persistAndFlush(user)
+
+    await redis.del(key)
+    
+    req.session.userId = user.id
+
+    return {user}
+  }
+
+  @Mutation(() => Boolean)
+  async forgotPassword(
+    @Arg('email') email: string,
+    @Ctx() { em, redis }: MyContext
+  ) {
+    const user = await em.findOne(User, { email })
+    if (!user) {
+      return true
+    }
+    const token = v4()
+
+    await redis.set(FORGET_PASSWORD_PREFIX + token, user.id, 'ex', 1000 * 60 * 60) // 1h
+
+
+    sendEmail(email,
+      ` <a href="http://localhost:3000/change-password/${token}">change password</a> `
+    )
+
+    return true
+  }
+
+
+  @Mutation(() => UserResponse)
   async register(
     @Arg('options') options: UsernamePasswordInput,
-    @Ctx() {em}: MyContext
+    @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
-    if(options.username.length <= 2){
-      return{
-        errors: [{
-          field: 'username',
-          message: 'username must be greater that 2'
-        }]
-      }
-    }
-    if(options.password.length <= 3){
-      return{
-        errors: [{
-          field: 'password',
-          message: 'password must be greater that 3'
-        }]
-      }
-    }
-    // const checkUser = await em.findOne(User, {username: options.username})
-    // if (checkUser) {
-    //   return{
-    //     errors: [{
-    //       field: 'username',
-    //       message: 'username already exist'
-    //     }]
-    //   }
-    // }
+
+    const errors = validateRegister(options)
+    if (errors) return { errors }
+
     const hashedPassword = await argon2.hash(options.password)
-    const user = em.create(User, {
-      username: options.username,
-      password: hashedPassword
-    })
+
+    let user
     try {
-      await em.persistAndFlush(user)
+      const result = await (em as EntityManager).createQueryBuilder(User).getKnexQuery().insert(
+        {
+          username: options.username,
+          email: options.email,
+          password: hashedPassword,
+          created_at: new Date(),
+          updated_at: new Date()
+        }
+      ).returning('*')
+      user = result[0]
     } catch (err) {
-      if(err.code === "23505" ){
-          return{
-        errors: [{
-          field: 'username',
-          message: 'username already exist'
-        }]
-      }
+      if (err.code === '23505') {
+        return {
+          errors: [{
+            field: 'username',
+            message: 'username already exist'
+          }]
+        }
       }
     }
-    return {
-      user
-    }
+    req.session.userId = user.id
+
+    return { user }
   }
 
   @Mutation(() => UserResponse)
   async login(
-    @Arg('options') options: UsernamePasswordInput,
-    @Ctx() {em}: MyContext
+    @Arg('usernameOrEmail') usernameOrEmail: string,
+    @Arg('password') password: string,
+    @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
-    const user = await em.findOne(User, {username: options.username})
-    if(!user){
+    const user = await em.findOne(User, usernameOrEmail.includes('@') ? { email: usernameOrEmail } : { username: usernameOrEmail })
+
+    if (!user) {
       return {
         errors: [{
-          field: 'username',
+          field: 'usernameOrEmail',
           message: 'user doesnt exist'
         }]
       }
-    }    
+    }
 
-    const validPassword = await argon2.verify(user.password, options.password)
-    if(!validPassword){
+    const validPassword = await argon2.verify(user.password, password)
+    if (!validPassword) {
       return {
         errors: [{
           field: 'password',
           message: 'incorrect password'
         }]
       }
-    } 
-    
-    return {
-      user
     }
+    req.session.userId = user.id
+
+    return { user }
+  }
+
+  @Query(() => User, { nullable: true })
+  async me(@Ctx() { em, req }: MyContext) {
+    console.log(req.session);
+
+    if (!req.session.userId) return null
+
+    const user = await em.findOne(User, { id: req.session.userId })
+    return user
+  }
+  @Mutation(() => Boolean)
+  async logout(@Ctx() { req, res }: MyContext) {
+    return new Promise(resolve => req.session.destroy(err => {
+      res.clearCookie(COOKIE_NAME)
+      if (err) {
+        console.log(err);
+        resolve(false)
+      }
+      resolve(true)
+    }))
   }
 
 }
