@@ -2,6 +2,20 @@ import { MeQuery, LoginMutation, MeDocument, RegisterMutation, LogoutMutation } 
 import { dedupExchange, fetchExchange } from "urql"
 import { updateQuery } from './updateQuery';
 import { cacheExchange } from '@urql/exchange-graphcache';
+import {pipe, tap} from 'wonka'
+import {Exchange} from 'urql'
+import Router from 'next/router';
+
+const errorExchange: Exchange = ({forward}) => (ops$) =>{
+  return pipe(
+    forward(ops$),
+    tap(({error})=>{
+      if (error?.message.includes('Not authenticated')) {
+        Router.replace('/login')
+      }
+    })
+  )
+}
 
 
 export const createUrqlClient = (ssrExchanges: any)=>({
@@ -42,5 +56,5 @@ export const createUrqlClient = (ssrExchanges: any)=>({
         }
       }
     }
-  }),ssrExchanges, fetchExchange],
+  }), errorExchange, ssrExchanges, fetchExchange],
 })
