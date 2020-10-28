@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon --exec ts-node src/index.ts",
-    "migration:create": "npx mikro-orm migration:create"
+    "migration:create": "npx typeorm migration:create -n migration -d src/migrations",
+    "mikro-orm:migration:create": "npx mikro-orm migration:create",
+    "typeorm": "node --require ts-node/register ./node_modules/typeorm/cli.js"
   },
   "keywords": [],
   "author": "joemrk",
@@ -25,10 +27,6 @@
     "typescript": "^4.0.3"
   },
   "dependencies": {
-    "@mikro-orm/cli": "^4.0.7",
-    "@mikro-orm/core": "^4.0.7",
-    "@mikro-orm/migrations": "^4.0.7",
-    "@mikro-orm/postgresql": "^4.0.7",
     "@urql/exchange-graphcache": "^3.1.6",
     "apollo-server-express": "^2.18.2",
     "argon2": "^0.27.0",
@@ -42,6 +40,7 @@
     "praphql": "^0.1.1",
     "reflect-metadata": "^0.1.13",
     "type-graphql": "^1.0.0",
+    "typeorm": "^0.2.28",
     "uuid": "^8.3.1"
   },
   "mikro-orm": {

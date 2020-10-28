@@ -14,7 +14,7 @@ export const validateRegister = (options : UsernamePasswordInput) =>{
       message: 'invalid email'
     }]
   }
-  if (options.password.length <= 3) {
+  if (options.password.length <= 2) {
     return [{
       field: 'password',
       message: 'password must be greater that 3'
