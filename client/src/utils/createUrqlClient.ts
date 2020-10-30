@@ -1,15 +1,16 @@
 import { MeQuery, LoginMutation, MeDocument, RegisterMutation, LogoutMutation } from './../generated/graphql';
-import { dedupExchange, fetchExchange } from "urql"
+import { dedupExchange, fetchExchange, stringifyVariables } from "urql"
 import { updateQuery } from './updateQuery';
-import { cacheExchange } from '@urql/exchange-graphcache';
-import {pipe, tap} from 'wonka'
-import {Exchange} from 'urql'
+import { cacheExchange, Resolver } from '@urql/exchange-graphcache';
+import { pipe, tap } from 'wonka'
+import { Exchange } from 'urql'
 import Router from 'next/router';
+import { PaginatedPosts } from '../generated/graphql';
 
-const errorExchange: Exchange = ({forward}) => (ops$) =>{
+const errorExchange: Exchange = ({ forward }) => (ops$) => {
   return pipe(
     forward(ops$),
-    tap(({error})=>{
+    tap(({ error }) => {
       if (error?.message.includes('Not authenticated')) {
         Router.replace('/login')
       }
@@ -17,13 +18,50 @@ const errorExchange: Exchange = ({forward}) => (ops$) =>{
   )
 }
 
+const cursorPagination = (): Resolver => {
+  return (_parent, fieldArgs, cache, info) => {
+    const { parentKey: entityKey, fieldName } = info;
+    const allFields = cache.inspectFields(entityKey);
+    const fieldInfos = allFields.filter((info) => info.fieldName === fieldName);
+    const size = fieldInfos.length;
+    if (size === 0) {
+      return undefined;
+    }
 
-export const createUrqlClient = (ssrExchanges: any)=>({
+    const fieldKey = `${fieldName}(${stringifyVariables(fieldArgs)})`
+    const isItInTheCache = cache.resolve(cache.resolveFieldByKey(entityKey, fieldKey) as string, 'posts')
+    info.partial = !isItInTheCache
+    let hasMore = true
+    let results: string[] = []
+    fieldInfos.forEach(f => {
+      const key = cache.resolveFieldByKey(entityKey, f.fieldKey) as string
+      const data = cache.resolve(key, 'posts') as string[]
+      const _hasMore = cache.resolve(key, 'hasMore')
+      if (!_hasMore) hasMore = _hasMore as boolean
+      results.push(...data)
+    })
+    return {
+      __typename: 'PaginatedPosts',
+      hasMore,
+      posts: results
+    }
+  };
+};
+
+export const createUrqlClient = (ssrExchanges: any) => ({
   url: 'http://localhost:4000/graphql',
   fetchOptions: {
-    credentials: 'include' as const 
+    credentials: 'include' as const
   },
   exchanges: [dedupExchange, cacheExchange({
+    keys:{
+      PaginatedPosts: () => null
+    },
+    resolvers: {
+      Query: {
+        posts: cursorPagination()
+      }
+    },
     updates: {
       Mutation: {
         login: (_result, args, cache, info) => {

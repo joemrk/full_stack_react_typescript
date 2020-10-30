@@ -17,7 +17,7 @@
     "strictFunctionTypes": true,
     "noImplicitThis": true,
     "noUnusedLocals": false, //declared but never read
-    "noUnusedParameters": true,
+    "noUnusedParameters": false,//declared but never read
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "allowSyntheticDefaultImports": true,
