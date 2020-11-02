@@ -27,9 +27,13 @@ const Index = () => {
       <Stack spacing={8} mb={4}>
         {!data && fetching ? <div>Loading...</div> : data!.posts.posts.map(p => (
           <Flex key={p.id} p={5} shadow={'md'} borderWidth="1px">
-            <UpdootSection post={p}/>
+            <UpdootSection post={p} />
             <Box>
-              <Heading fontSize={'xl'}>{p.title}</Heading>
+              <NextLink href="/post/[id]" as={`/post/${p.id}`}>
+                <Link>
+                  <Heading fontSize={'xl'}>{p.title}</Heading>
+                </Link>
+              </NextLink>
               <Text>{p.creator.username}</Text>
               <Text mt={4}>{p.textSnippet}</Text>
             </Box>
@@ -51,4 +55,4 @@ const Index = () => {
   )
 }
 
-export default withUrqlClient(createUrqlClient)(Index)
+export default withUrqlClient(createUrqlClient, { ssr: true })(Index)

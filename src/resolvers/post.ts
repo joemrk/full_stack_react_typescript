@@ -86,11 +86,20 @@ export class PostResolver {
     const realLimit = Math.min(50, limit) + 1
     const realLimitPlusOne = realLimit + 1
 
-    const replacements: any[] = [realLimitPlusOne, req.session.userIds]
+    const replacements: any[] = [realLimitPlusOne];
 
-    if (cursor) replacements.push(new Date(parseInt(cursor)))
+    if (req.session.userId) {
+      replacements.push(req.session.userId);
+    }
 
-    const posts = await getConnection().query(`
+    let cursorIdx = 3;
+    if (cursor) {
+      replacements.push(new Date(parseInt(cursor)));
+      cursorIdx = replacements.length;
+    }
+
+    const posts = await getConnection().query(
+      `
     select p.*,
     json_build_object(
       'id', u.id,
@@ -105,10 +114,11 @@ export class PostResolver {
       }
     from post p
     inner join public.user u on u.id = p."creatorId"
-    ${cursor ? `where p."createdAt" < $3` : ""}
+    ${cursor ? `where p."createdAt" < $${cursorIdx}` : ""}
     order by p."createdAt" DESC
     limit $1
-    ` , replacements
+    `,
+      replacements
     );
 
 
@@ -122,7 +132,7 @@ export class PostResolver {
   @Query(() => Post, { nullable: true })
   post(@Arg('id', () => Int) id: number): Promise<Post | undefined> {
     return (
-      Post.findOne(id)
+      Post.findOne(id, {relations: ['creator']})
     )
   }
 
