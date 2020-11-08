@@ -12,9 +12,16 @@ import { createUrqlClient } from "../utils/createUrqlClient";
 const Index = () => {
   const [variables, setVariables] = useState({ limit: 10, cursor: null as null | string })
   const [{ data: meData }] = useMeQuery()
-  const [{ data, fetching }] = usePostsQuery({ variables })
+  const [{ data, error, fetching }] = usePostsQuery({ variables })
   const [, deletePost] = useDeletePostMutation()
-  if (!fetching && !data) return <div>You got query failed for some reason</div>
+
+
+  if (!fetching && !data) return (
+    <div>
+      <div>You got query failed for some reason</div>
+      <div>{error?.message}</div>
+    </div>
+  )
 
   return (
     <Layout>
@@ -24,7 +31,6 @@ const Index = () => {
           <Link ml="auto">Create post</Link>
         </NextLink>
       </Flex>
-
 
       <Stack spacing={8} mb={4}>
         {!data && fetching ? <div>Loading...</div> : data!.posts.posts.map(p =>

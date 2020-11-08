@@ -15,6 +15,8 @@ import { PostResolver } from './resolvers/post';
 import { UserResolver } from './resolvers/user';
 import path from 'path'
 import { Updoot } from './entities/Updoot';
+import { createUserLoader } from './utils/createUserLoader';
+import { createUpdootLoader } from './utils/creatuUpdootLoader';
 
 const main = async () => {
   const conn = await createConnection({
@@ -27,8 +29,8 @@ const main = async () => {
     entities: [Post, User, Updoot],
     migrations: [path.join(__dirname, './migrations/*')]
   })
-//  await conn.runMigrations();
-// await Post.delete({})
+  //  await conn.runMigrations();
+  // await Post.delete({})
 
   const app = express()
 
@@ -63,7 +65,13 @@ const main = async () => {
       resolvers: [HelloResolver, PostResolver, UserResolver],
       validate: false
     }),
-    context: ({ req, res }) => ({req, res, redis })
+    context: ({ req, res }) => ({
+      req,
+      res,
+      redis,
+      userLoader: createUserLoader(),
+      updootLoader: createUpdootLoader(),
+    })
   })
   apollosServer.applyMiddleware({
     app,
