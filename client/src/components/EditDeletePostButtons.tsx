@@ -9,8 +9,8 @@ interface EditDeletePostButtonsProps {
 }
 
 const EditDeletePostButtons: React.FC<EditDeletePostButtonsProps> = ({ id, creatorId }) => {
-  const [{ data: meData }] = useMeQuery()
-  const [, deletePost] = useDeletePostMutation()
+  const { data: meData } = useMeQuery()
+  const [deletePost] = useDeletePostMutation()
 
   if (meData?.me?.id !== creatorId) return null
 
@@ -30,7 +30,9 @@ const EditDeletePostButtons: React.FC<EditDeletePostButtonsProps> = ({ id, creat
         variantColor='red'
         aria-label='Delete post'
         onClick={() => {
-          deletePost({ id: id })
+          deletePost({ variables: {id}, update: (cache) =>{
+            cache.evict({id: 'Post:'+ id})
+          } })
         }} />
     </Box>
   )

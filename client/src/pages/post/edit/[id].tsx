@@ -8,20 +8,21 @@ import { Layout } from '../../../components/Layout';
 import { usePostQuery, useUpdatePostMutation } from '../../../generated/graphql';
 import { createUrqlClient } from '../../../utils/createUrqlClient';
 import { useGetIntId } from '../../../utils/useGetIntId';
+import { withApollo } from '../../../utils/wthApollo';
 
 
 const EditPost: React.FC<{}> = ({ }) => {
   const router = useRouter()
   const postId = useGetIntId()
-  const [{ data, fetching }] = usePostQuery({
-    pause: postId === -1,
+  const { data, loading } = usePostQuery({
+    skip: postId === -1,
     variables: {
       id: postId
     }
   })
-  const [, updatePost] = useUpdatePostMutation()
+  const [updatePost] = useUpdatePostMutation()
 
-  if (fetching) return <Layout>Loading...</Layout>
+  if (loading) return <Layout>Loading...</Layout>
   if (!data?.post) return <Layout><Box>Post non found.</Box></Layout>
 
   return (
@@ -29,7 +30,7 @@ const EditPost: React.FC<{}> = ({ }) => {
       <Formik
         initialValues={{ title: data.post.title, text: data.post.text }}
         onSubmit={async (values) => {
-          await updatePost({ id: postId, ...values })
+          await updatePost({variables: { id: postId, ...values }})
           router.back()
         }}
       >
@@ -59,4 +60,4 @@ const EditPost: React.FC<{}> = ({ }) => {
   );
 }
 
-export default withUrqlClient(createUrqlClient)(EditPost)
+export default withApollo({ssr: false})(EditPost)
